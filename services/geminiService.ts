@@ -1,9 +1,21 @@
 
 import { GoogleGenAI, Type } from "@google/genai";
 import { Slide, ChatMessage } from "../types";
+import { Language } from "../locales";
 
-export const generateFullDeck = async (topic: string): Promise<Slide[]> => {
+const getLanguageName = (lang: Language) => {
+  switch(lang) {
+    case 'zh': return 'Simplified Chinese';
+    case 'en': return 'English';
+    case 'ja': return 'Japanese';
+    case 'ko': return 'Korean';
+    default: return 'Simplified Chinese';
+  }
+};
+
+export const generateFullDeck = async (topic: string, lang: Language = 'zh'): Promise<Slide[]> => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const langName = getLanguageName(lang);
   
   const prompt = `
     Create a complete 6-slide professional presentation about: "${topic}".
@@ -16,7 +28,8 @@ export const generateFullDeck = async (topic: string): Promise<Slide[]> => {
     5. Strategic Outlook (type: 'content', visualType: 'pie-chart')
     6. Summary & Conclusion (type: 'summary', visualType: 'chart')
     
-    Ensure the content is insightful and professional. Use Chinese for all text.
+    Ensure the content is insightful and professional. 
+    CRITICAL: Use ONLY ${langName} for all text.
     Strictly follow the JSON schema provided.
   `;
 
@@ -56,8 +69,9 @@ export const generateFullDeck = async (topic: string): Promise<Slide[]> => {
   }
 };
 
-export const processTemplateContent = async (rawText: string): Promise<Slide[]> => {
+export const processTemplateContent = async (rawText: string, lang: Language = 'zh'): Promise<Slide[]> => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const langName = getLanguageName(lang);
   
   const prompt = `
     You are an AI presentation expert. I have extracted the following text from an existing PPT template:
@@ -68,7 +82,7 @@ export const processTemplateContent = async (rawText: string): Promise<Slide[]> 
     1. Summarize the core theme.
     2. Generate a refined and professionally rewritten version of these slides (6-8 slides).
     3. If the content is sparse, expand it with relevant professional insights.
-    4. Use Chinese for all output.
+    4. Use ONLY ${langName} for all output text.
     5. Ensure each slide has a logical 'visualType'.
   `;
 
@@ -108,13 +122,14 @@ export const processTemplateContent = async (rawText: string): Promise<Slide[]> 
   }
 };
 
-export const generateMoreSlides = async (currentTopic: string): Promise<Slide[]> => {
+export const generateMoreSlides = async (currentTopic: string, lang: Language = 'zh'): Promise<Slide[]> => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const langName = getLanguageName(lang);
   
   const prompt = `
     Based on the following existing slides: "${currentTopic}", 
     generate 2-3 additional professional presentation slides in JSON format that expand on the topic.
-    Use Chinese for all text.
+    Use ONLY ${langName} for all text.
   `;
 
   try {
@@ -154,9 +169,10 @@ export const generateMoreSlides = async (currentTopic: string): Promise<Slide[]>
   }
 };
 
-export const regenerateSingleSlide = async (slide: Slide): Promise<Slide> => {
+export const regenerateSingleSlide = async (slide: Slide, lang: Language = 'zh'): Promise<Slide> => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-  const prompt = `重新生成标题为 "${slide.title}" 的PPT幻灯片内容。提供更有深度的内容要点。返回JSON。`;
+  const langName = getLanguageName(lang);
+  const prompt = `Regenerate the slide content with title "${slide.title}". Provide deeper insights. Use ONLY ${langName}. Return JSON.`;
 
   try {
     const response = await ai.models.generateContent({
@@ -186,9 +202,10 @@ export const regenerateSingleSlide = async (slide: Slide): Promise<Slide> => {
   }
 };
 
-export const generateSlidesFromChat = async (prompt: string, currentSlides: Slide[]): Promise<{ slides: Slide[], reply: string }> => {
+export const generateSlidesFromChat = async (prompt: string, currentSlides: Slide[], lang: Language = 'zh'): Promise<{ slides: Slide[], reply: string }> => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-  const systemInstruction = `你是一个专业的PPT内容专家。用户当前PPT标题为: ${currentSlides.map(s => s.title).join(', ')}。请根据用户需求生成新的幻灯片列表。`;
+  const langName = getLanguageName(lang);
+  const systemInstruction = `You are a professional presentation expert. Current slides: ${currentSlides.map(s => s.title).join(', ')}. Respond and generate in ONLY ${langName}.`;
 
   try {
     const response = await ai.models.generateContent({

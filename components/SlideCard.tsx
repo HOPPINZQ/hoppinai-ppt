@@ -2,6 +2,7 @@
 import React from 'react';
 import { Slide, ThemeConfig } from '../types';
 import { ICON_LIBRARY } from '../constants';
+import { UI_TRANSLATIONS, Language } from '../locales';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, LabelList,
   PieChart, Pie, Cell as PieCell
@@ -14,25 +15,26 @@ interface SlideCardProps {
   isRegenerating?: boolean;
   theme?: ThemeConfig;
   onIconClick?: (index: number) => void;
+  lang?: Language;
 }
 
 const EFFICIENCY_DATA = [
-  { name: '直接开发', val: 100 },
-  { name: 'Vibe Coding', val: 40 },
-  { name: 'SDD 模式', val: 15 },
+  { name: 'Manual', zh: '直接开发', val: 100 },
+  { name: 'AI Assist', zh: 'Vibe Coding', val: 40 },
+  { name: 'SDD Mode', zh: 'SDD 模式', val: 15 },
 ];
 
 const PROJECTION_2026_DATA = [
-  { name: '传统模式', val: 100 },
-  { name: 'AI 辅助', val: 35 },
-  { name: 'Agent 自主', val: 12 },
+  { name: 'Legacy', zh: '传统模式', val: 100 },
+  { name: 'AI Driven', zh: 'AI 辅助', val: 35 },
+  { name: 'Autonomous', zh: 'Agent 自主', val: 12 },
 ];
 
 const WORK_2026_RATIO = [
-  { name: 'AI框架研发', val: 5 },
-  { name: 'MCP生态', val: 2 },
-  { name: '智擎云智能', val: 2 },
-  { name: '开发范式普及', val: 3 },
+  { name: 'Framework', val: 5 },
+  { name: 'Ecosystem', val: 2 },
+  { name: 'Intelligence', val: 2 },
+  { name: 'Paradigm', val: 3 },
 ];
 
 const FlowNode: React.FC<{ label: string; sub: string; icon: React.ReactNode; colorClass: string; theme?: ThemeConfig }> = ({ label, sub, icon, colorClass, theme }) => (
@@ -48,15 +50,16 @@ const FlowNode: React.FC<{ label: string; sub: string; icon: React.ReactNode; co
   </div>
 );
 
-const SlideCard: React.FC<SlideCardProps> = ({ slide, isActive, onRegenerate, isRegenerating, theme, onIconClick }) => {
+const SlideCard: React.FC<SlideCardProps> = ({ slide, isActive, onRegenerate, isRegenerating, theme, onIconClick, lang = 'zh' }) => {
   const isTitleSlide = slide.type === 'title';
   const isSummarySlide = slide.type === 'summary';
+  const t = UI_TRANSLATIONS[lang];
 
   const chartColors = theme ? [theme.primary, theme.secondary, theme.accent, '#94a3b8'] : ['#3b82f6', '#60a5fa', '#8b5cf6', '#10b981'];
 
   const renderVisual = () => {
     if (slide.visualType === 'pie-chart') {
-      const data = slide.title.includes('2026') ? WORK_2026_RATIO : WORK_2026_RATIO;
+      const data = WORK_2026_RATIO;
       const RADIAN = Math.PI / 180;
       const renderCustomizedLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, value, name }: any) => {
         const radius = innerRadius + (outerRadius - innerRadius) * 0.55;
@@ -100,20 +103,20 @@ const SlideCard: React.FC<SlideCardProps> = ({ slide, isActive, onRegenerate, is
                 </Pie>
                 <Tooltip 
                    contentStyle={{ backgroundColor: '#ffffff', border: 'none', borderRadius: '12px', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)', padding: '12px'}}
-                   formatter={(value: number, name: string) => [`${value}/12 个月`, name]}
+                   formatter={(value: number, name: string) => [`${value}/12`, name]}
                 />
               </PieChart>
             </ResponsiveContainer>
           </div>
           <p className="text-center text-[10px] text-slate-400 mb-2 font-bold tracking-widest uppercase shrink-0">
-            2026 YEARLY RESOURCE ALLOCATION
+            YEARLY RESOURCE ALLOCATION
           </p>
         </div>
       );
     }
 
     if (slide.visualType === 'chart') {
-      const isEffProjection = slide.title.includes('研发效能') || slide.title.includes('总结') || isSummarySlide;
+      const isEffProjection = slide.title.includes('效能') || slide.title.includes('总结') || isSummarySlide || slide.title.toLowerCase().includes('summary');
       const data = isEffProjection ? PROJECTION_2026_DATA : EFFICIENCY_DATA;
       
       return (
@@ -122,7 +125,7 @@ const SlideCard: React.FC<SlideCardProps> = ({ slide, isActive, onRegenerate, is
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={data} margin={{ top: 25, right: 10, left: -20, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 11, fontWeight: 700 }} dy={10} />
+                <XAxis dataKey={lang === 'zh' ? 'zh' : 'name'} axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 11, fontWeight: 700 }} dy={10} />
                 <YAxis hide axisLine={false} tickLine={false} />
                 <Tooltip 
                   cursor={{ fill: '#f8fafc' }}
@@ -138,7 +141,7 @@ const SlideCard: React.FC<SlideCardProps> = ({ slide, isActive, onRegenerate, is
             </ResponsiveContainer>
           </div>
           <p className="text-center text-[10px] text-slate-400 mt-2 font-bold tracking-widest uppercase">
-            {isEffProjection ? '2026 EFFICIENCY PROJECTION' : 'RESOURCE ANALYSIS'}
+            {isEffProjection ? 'EFFICIENCY PROJECTION' : 'RESOURCE ANALYSIS'}
           </p>
         </div>
       );
@@ -147,7 +150,7 @@ const SlideCard: React.FC<SlideCardProps> = ({ slide, isActive, onRegenerate, is
     if (slide.visualType === 'icon-grid') {
       const items = slide.content.map(item => {
         const parts = item.split(/[：:]/);
-        return { title: parts[0] || '核心点', desc: parts[1] || '详细规划' };
+        return { title: parts[0] || t.point, desc: parts[1] || '' };
       });
 
       return (
@@ -162,7 +165,7 @@ const SlideCard: React.FC<SlideCardProps> = ({ slide, isActive, onRegenerate, is
                   <button 
                     onClick={() => onIconClick?.(idx)}
                     className="p-2 rounded-lg bg-slate-50 text-blue-600 hover:bg-blue-600 hover:text-white transition-all group/icon shrink-0"
-                    title="点击更换图标"
+                    title="Change Icon"
                     style={{ color: theme?.primary }}
                   >
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -170,7 +173,7 @@ const SlideCard: React.FC<SlideCardProps> = ({ slide, isActive, onRegenerate, is
                     </svg>
                   </button>
                   <div className="flex-grow">
-                    <div className="mb-0.5 font-black text-[10px] group-hover:translate-x-1 transition-transform" style={{ color: theme?.primary || '#2563eb' }}>POINT 0{idx + 1}</div>
+                    <div className="mb-0.5 font-black text-[10px] group-hover:translate-x-1 transition-transform" style={{ color: theme?.primary || '#2563eb' }}>{t.point} 0{idx + 1}</div>
                     <div className="text-[12px] font-extrabold text-slate-900 leading-tight mb-0.5" style={{ color: theme?.textColor }}>{item.title}</div>
                     <div className="text-[9px] text-slate-500 font-medium line-clamp-2 leading-tight">{item.desc}</div>
                   </div>
@@ -187,11 +190,11 @@ const SlideCard: React.FC<SlideCardProps> = ({ slide, isActive, onRegenerate, is
         <div className="mt-8 flex flex-col items-center w-full">
           <div className="flex items-center justify-between w-full max-w-lg mb-8 relative">
             <div className="absolute top-7 left-0 right-0 h-0.5 bg-slate-100 -z-10"></div>
-            <FlowNode theme={theme} label="Agentic" sub="架构内核" colorClass="bg-indigo-600 text-white" icon={<svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>} />
+            <FlowNode theme={theme} label="Agentic" sub="Core" colorClass="bg-indigo-600 text-white" icon={<svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>} />
             <div className="flex-grow flex justify-center"><svg className="w-6 h-6 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" /></svg></div>
-            <FlowNode theme={theme} label="MCP" sub="标准通信" colorClass="bg-blue-50 text-blue-500" icon={<svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>} />
+            <FlowNode theme={theme} label="MCP" sub="Comm" colorClass="bg-blue-50 text-blue-500" icon={<svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>} />
             <div className="flex-grow flex justify-center"><svg className="w-6 h-6 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" /></svg></div>
-            <FlowNode theme={theme} label="Self-Heal" sub="自愈闭环" colorClass="bg-emerald-50 text-emerald-600" icon={<svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg>} />
+            <FlowNode theme={theme} label="Auto-Fix" sub="Closed" colorClass="bg-emerald-50 text-emerald-600" icon={<svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg>} />
           </div>
           <div className="mt-6 flex gap-3">
              <span className="px-3 py-1 rounded-full text-[9px] font-bold border" style={{ backgroundColor: `${theme?.primary}10`, borderColor: `${theme?.primary}30`, color: theme?.primary }}>FRAMEWORK 6.0</span>
@@ -214,14 +217,13 @@ const SlideCard: React.FC<SlideCardProps> = ({ slide, isActive, onRegenerate, is
       <div className={`absolute top-[-10%] right-[-10%] w-64 h-64 ${isTitleSlide || isSummarySlide ? 'bg-black/5' : 'bg-blue-500/5'} rounded-full blur-3xl`}></div>
       <div className={`absolute bottom-[-10%] left-[-10%] w-96 h-96 ${isTitleSlide || isSummarySlide ? 'bg-black/5' : 'bg-indigo-500/5'} rounded-full blur-3xl`}></div>
 
-      {/* Slide Tools */}
       <div className="absolute top-6 right-6 z-50 opacity-0 group-hover/slide:opacity-100 transition-opacity">
         <button
           onClick={() => onRegenerate?.(slide)}
           disabled={isRegenerating}
           className="p-3 bg-white/80 backdrop-blur-md rounded-full shadow-lg border border-slate-200 hover:text-white transition-all active:scale-95 disabled:opacity-50"
           style={{ color: theme?.primary } as any}
-          title="重新生成本页内容"
+          title={t.regenerateTitle}
         >
           {isRegenerating ? (
             <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -236,12 +238,11 @@ const SlideCard: React.FC<SlideCardProps> = ({ slide, isActive, onRegenerate, is
         </button>
       </div>
 
-      {/* Loading Overlay */}
       {isRegenerating && (
         <div className="absolute inset-0 z-40 bg-white/40 backdrop-blur-[2px] flex items-center justify-center transition-all">
           <div className="flex flex-col items-center gap-4">
             <div className="w-12 h-12 border-4 border-t-transparent rounded-full animate-spin" style={{ borderColor: theme?.primary }}></div>
-            <p className="font-bold animate-pulse" style={{ color: theme?.primary }}>正在重构内容...</p>
+            <p className="font-bold animate-pulse" style={{ color: theme?.primary }}>{t.regenerating}</p>
           </div>
         </div>
       )}

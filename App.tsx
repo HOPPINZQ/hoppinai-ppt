@@ -3,6 +3,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Slide, GenerationStatus, ThemeConfig } from './types';
 import { THEMES } from './constants';
 import { generateMoreSlides, regenerateSingleSlide, generateFullDeck, processTemplateContent } from './services/geminiService';
+import { UI_TRANSLATIONS, Language } from './locales';
 import SlideCard from './components/SlideCard';
 import ChatPanel from './components/ChatPanel';
 import ThemePanel from './components/ThemePanel';
@@ -15,6 +16,7 @@ import html2canvas from 'html2canvas';
 import JSZip from 'jszip';
 
 const App: React.FC = () => {
+  const [lang, setLang] = useState<Language>('zh');
   const [slides, setSlides] = useState<Slide[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [status, setStatus] = useState<GenerationStatus>(GenerationStatus.IDLE);
@@ -30,6 +32,8 @@ const App: React.FC = () => {
   const [currentProjectId, setCurrentProjectId] = useState<string | null>(null);
   const [isExportingPDF, setIsExportingPDF] = useState(false);
   const [isParsingTemplate, setIsParsingTemplate] = useState(false);
+
+  const t = UI_TRANSLATIONS[lang];
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const exportStageRef = useRef<HTMLDivElement>(null);
@@ -58,7 +62,7 @@ const App: React.FC = () => {
   const performAutoSave = useCallback((updatedSlides: Slide[], theme: ThemeConfig, id?: string | null) => {
     if (updatedSlides.length === 0) return;
     const targetId = id || currentProjectId || `project-${Date.now()}`;
-    const name = updatedSlides[0]?.title || projectTopic || "未命名演示文稿";
+    const name = updatedSlides[0]?.title || projectTopic || "AI PPT";
     const projectData = { id: targetId, name, slides: updatedSlides, theme, updatedAt: Date.now() };
     localStorage.setItem(`ai_ppt_data_${targetId}`, JSON.stringify(projectData));
     const projectsStr = localStorage.getItem('ai_ppt_projects');
@@ -76,15 +80,12 @@ const App: React.FC = () => {
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
-
     setIsParsingTemplate(true);
     setStatus(GenerationStatus.GENERATING);
-
     try {
       const zip = new JSZip();
       const content = await zip.loadAsync(file);
       const slideFiles = Object.keys(content.files).filter(name => name.startsWith('ppt/slides/slide') && name.endsWith('.xml'));
-      
       let allText = '';
       for (const slideFile of slideFiles) {
         const xmlText = await content.files[slideFile].async('string');
@@ -96,19 +97,14 @@ const App: React.FC = () => {
         }
         allText += '\n--- Slide Boundary ---\n';
       }
-
-      if (!allText.trim()) {
-        throw new Error('未能从 PPT 文件中提取到有效文字内容。');
-      }
-
-      const newSlides = await processTemplateContent(allText);
+      if (!allText.trim()) throw new Error('No valid text extracted');
+      const newSlides = await processTemplateContent(allText, lang);
       setSlides(newSlides);
       setCurrentIndex(0);
       performAutoSave(newSlides, currentTheme);
       setStatus(GenerationStatus.SUCCESS);
     } catch (error) {
-      console.error('Failed to parse template:', error);
-      alert(error instanceof Error ? error.message : '解析模板失败，请确保上传的是有效的 .pptx 文件。');
+      alert('Error parsing template.');
       setStatus(GenerationStatus.ERROR);
     } finally {
       setIsParsingTemplate(false);
@@ -123,13 +119,13 @@ const App: React.FC = () => {
     try {
       let updatedSlides: Slide[] = [];
       if (slides.length === 0) {
-        const topic = projectTopic || "AI 技术落地性分析";
-        updatedSlides = await generateFullDeck(topic);
+        const topic = projectTopic || (lang === 'zh' ? "AI 技术落地性分析" : "AI Technology Analysis");
+        updatedSlides = await generateFullDeck(topic, lang);
         setSlides(updatedSlides);
         setCurrentIndex(0);
       } else {
         const topic = slides.map(s => s.title).join(', ');
-        const newSlides = await generateMoreSlides(topic);
+        const newSlides = await generateMoreSlides(topic, lang);
         updatedSlides = [...slides, ...newSlides];
         setSlides(updatedSlides);
         setTimeout(() => setCurrentIndex(slides.length), 100);
@@ -137,9 +133,8 @@ const App: React.FC = () => {
       performAutoSave(updatedSlides, currentTheme);
       setStatus(GenerationStatus.SUCCESS);
     } catch (error) {
-      console.error('Failed to generate:', error);
       setStatus(GenerationStatus.ERROR);
-      alert('内容生成失败，请稍后重试。');
+      alert('Generation failed.');
     } finally {
       setTimeout(() => setStatus(GenerationStatus.IDLE), 3000);
     }
@@ -147,7 +142,7 @@ const App: React.FC = () => {
 
   const handleSaveManually = () => {
     performAutoSave(slides, currentTheme);
-    alert('项目已保存到本地库。');
+    alert('Project saved.');
   };
 
   const handleLoadProject = (id: string) => {
@@ -163,7 +158,7 @@ const App: React.FC = () => {
   };
 
   const handleDeleteProject = (id: string) => {
-    if (!confirm('确定要删除这个项目吗？')) return;
+    if (!confirm('Delete this project?')) return;
     localStorage.removeItem(`ai_ppt_data_${id}`);
     const projectsStr = localStorage.getItem('ai_ppt_projects');
     if (projectsStr) {
@@ -176,7 +171,7 @@ const App: React.FC = () => {
   };
 
   const handleNewProject = () => {
-    if (slides.length > 0 && !confirm('当前项目未保存，确定要开启新项目吗？')) return;
+    if (slides.length > 0 && !confirm('Create new?')) return;
     setSlides([]);
     setCurrentProjectId(null);
     setProjectTopic('');
@@ -187,11 +182,11 @@ const App: React.FC = () => {
     if (regeneratingSlideId) return;
     setRegeneratingSlideId(slide.id);
     try {
-      const updatedSlide = await regenerateSingleSlide(slide);
+      const updatedSlide = await regenerateSingleSlide(slide, lang);
       const newSlides = slides.map(s => s.id === slide.id ? updatedSlide : s);
       setSlides(newSlides);
       performAutoSave(newSlides, currentTheme);
-    } catch (error) { alert('重构失败'); } finally { setRegeneratingSlideId(null); }
+    } catch (error) { alert('Regenerate failed'); } finally { setRegeneratingSlideId(null); }
   };
 
   const handleUpdateNotes = (slideId: string, notes: string) => {
@@ -230,7 +225,7 @@ const App: React.FC = () => {
         pptSlide.addText(bullets, { x: 0.5, y: 2, w: '50%', h: '60%', valign: 'top', color: '444444' });
       }
     });
-    pptx.writeFile({ fileName: `PPT_${Date.now()}.pptx` });
+    pptx.writeFile({ fileName: `${slides[0]?.title || 'AI_PPT'}.pptx` });
   };
 
   const handleExportPDF = async () => {
@@ -248,8 +243,8 @@ const App: React.FC = () => {
         if (i > 0) pdf.addPage([1280, 720], 'landscape');
         pdf.addImage(imgData, 'PNG', 0, 0, 1280, 720);
       }
-      pdf.save(`AI_Presentation_${Date.now()}.pdf`);
-    } catch (err) { console.error("PDF Export Error:", err); alert("导出 PDF 失败，请重试。"); } finally { setIsExportingPDF(false); }
+      pdf.save(`${slides[0]?.title || 'AI_PPT'}.pdf`);
+    } catch (err) { alert("PDF Export failed"); } finally { setIsExportingPDF(false); }
   };
 
   return (
@@ -261,14 +256,14 @@ const App: React.FC = () => {
       <div id="pdf-export-stage" ref={exportStageRef}>
         {slides.map((slide, index) => (
           <div key={`pdf-${slide.id}`} id={`pdf-slide-${index}`} style={{ width: '1280px', height: '720px', overflow: 'hidden' }}>
-            <SlideCard slide={slide} isActive={true} theme={currentTheme} />
+            <SlideCard slide={slide} isActive={true} theme={currentTheme} lang={lang} />
           </div>
         ))}
       </div>
 
       <header className="shrink-0 z-50 p-6 flex justify-between items-center bg-white/80 backdrop-blur-md border-b border-slate-100 shadow-sm">
         <div className="flex items-center gap-3">
-          <button onClick={() => setIsProjectOpen(true)} className="p-2 hover:bg-slate-100 rounded-lg transition-colors text-slate-600" title="打开项目库">
+          <button onClick={() => setIsProjectOpen(true)} className="p-2 hover:bg-slate-100 rounded-lg transition-colors text-slate-600" title={t.projectTitle}>
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
             </svg>
@@ -280,42 +275,64 @@ const App: React.FC = () => {
             </svg>
           </div>
           <div>
-            <h1 className="text-xl font-bold text-slate-900 tracking-tight">{slides[0]?.title || "AI PPT 生成器"}</h1>
+            <h1 className="text-xl font-bold text-slate-900 tracking-tight">{slides[0]?.title || t.appName}</h1>
             <p className="text-[10px] text-slate-400 uppercase tracking-widest font-bold flex items-center gap-1">
-              <span>Smart Presentation Platform</span>
-              {currentProjectId && <span className="flex items-center gap-1 text-emerald-500 ml-2"><div className="w-1 h-1 rounded-full bg-emerald-500 animate-pulse"></div>已实时同步</span>}
+              <span>{t.smartPlatform}</span>
+              {currentProjectId && <span className="flex items-center gap-1 text-emerald-500 ml-2"><div className="w-1 h-1 rounded-full bg-emerald-500 animate-pulse"></div>{t.synced}</span>}
             </p>
           </div>
         </div>
 
         <div className="flex items-center gap-3">
-          <button onClick={() => fileInputRef.current?.click()} className="p-2 text-slate-400 hover:text-indigo-600 transition-colors" title="从 PPTX 模板导入">
+          {/* Language Switcher */}
+          <div className="relative group">
+            <button className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-slate-100 transition-colors">
+               <svg className="w-5 h-5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10M12.751 5C11.783 10.77 8.07 15.61 3 18.129" />
+               </svg>
+               <span className="text-xs font-bold text-slate-700">{UI_TRANSLATIONS[lang].languageName}</span>
+            </button>
+            <div className="absolute right-0 top-full mt-1 bg-white border border-slate-100 shadow-xl rounded-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-[100] min-w-[120px]">
+              {Object.keys(UI_TRANSLATIONS).map((l) => (
+                <button 
+                  key={l}
+                  onClick={() => setLang(l as Language)}
+                  className={`w-full text-left px-4 py-2 text-xs font-bold hover:bg-slate-50 transition-colors first:rounded-t-xl last:rounded-b-xl ${lang === l ? 'text-blue-600' : 'text-slate-600'}`}
+                >
+                  {UI_TRANSLATIONS[l as Language].languageName}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="h-6 w-px bg-slate-200"></div>
+
+          <button onClick={() => fileInputRef.current?.click()} className="p-2 text-slate-400 hover:text-indigo-600 transition-colors" title={t.uploadTemplate}>
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
             </svg>
           </button>
-          <button onClick={handleNewProject} className="p-2 text-slate-400 hover:text-blue-600 transition-colors" title="新建项目">
+          <button onClick={handleNewProject} className="p-2 text-slate-400 hover:text-blue-600 transition-colors" title={t.newProject}>
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
             </svg>
           </button>
-          <button onClick={handleSaveManually} className="p-2 text-slate-400 hover:text-emerald-600 transition-colors" title="手动强制保存">
+          <button onClick={handleSaveManually} className="p-2 text-slate-400 hover:text-emerald-600 transition-colors" title={t.saveProject}>
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
             </svg>
           </button>
           <div className="h-6 w-px bg-slate-200"></div>
-          <button onClick={() => setIsThemeOpen(true)} className="px-4 py-2 rounded-full font-bold text-sm bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 transition-all shadow-sm flex items-center gap-2">
-            设置主题
+          <button onClick={() => setIsThemeOpen(true)} className="px-4 py-2 rounded-full font-bold text-sm bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 transition-all shadow-sm">
+            {t.setTheme}
           </button>
           <button onClick={handleExportPDF} disabled={isExportingPDF || slides.length === 0} className={`px-4 py-2 rounded-full font-bold text-sm flex items-center gap-2 transition-all ${isExportingPDF ? 'bg-slate-100 text-slate-400' : 'bg-slate-800 text-white hover:bg-slate-900 shadow-lg active:scale-95'}`}>
-            {isExportingPDF ? <><svg className="animate-spin h-4 w-4" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>导出中...</> : <><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" /></svg>导出 PDF</>}
+            {isExportingPDF ? t.exporting : t.exportPdf}
           </button>
           <button onClick={handleExportPPT} disabled={slides.length === 0} className="px-4 py-2 rounded-full font-bold text-sm bg-emerald-600 text-white hover:bg-emerald-700 transition-all shadow-lg flex items-center gap-2 disabled:opacity-50">
-            导出 PPTX
+            {t.exportPptx}
           </button>
           <button onClick={handleGenerate} disabled={status === GenerationStatus.GENERATING} className={`px-4 py-2 rounded-full font-bold text-sm flex items-center gap-2 transition-all ${status === GenerationStatus.GENERATING ? 'bg-slate-100 text-slate-500' : 'bg-blue-600 hover:bg-blue-700 text-white shadow-lg'}`} style={status !== GenerationStatus.GENERATING ? { backgroundColor: currentTheme.primary } : {}}>
-            {status === GenerationStatus.GENERATING ? '正在生成...' : slides.length === 0 ? '一键生成全套' : '扩写'}
+            {status === GenerationStatus.GENERATING ? t.generating : slides.length === 0 ? t.generateFull : t.expand}
           </button>
         </div>
       </header>
@@ -324,43 +341,33 @@ const App: React.FC = () => {
         {slides.length === 0 ? (
           <div className="max-w-2xl w-full text-center space-y-8 animate-in fade-in zoom-in duration-500">
             <div className="space-y-4">
-              <h2 className="text-6xl font-black text-slate-900 tracking-tighter">智能演示。进化。</h2>
-              <p className="text-slate-400 text-xl font-medium max-w-lg mx-auto leading-relaxed">输入主题直接生成，或上传现有 PPT 模板进行智能重写与扩写。</p>
+              <h2 className="text-6xl font-black text-slate-900 tracking-tighter">{t.landingTitle}</h2>
+              <p className="text-slate-400 text-xl font-medium max-w-lg mx-auto leading-relaxed">{t.landingSub}</p>
             </div>
             
             <div className="relative group max-w-xl mx-auto">
-              <input type="text" value={projectTopic} onChange={(e) => setProjectTopic(e.target.value)} placeholder="输入一个主题..." className="w-full px-8 py-6 rounded-3xl border-2 border-slate-100 bg-white shadow-2xl text-xl focus:outline-none focus:border-blue-500 transition-all" />
+              <input type="text" value={projectTopic} onChange={(e) => setProjectTopic(e.target.value)} placeholder={t.placeholder} className="w-full px-8 py-6 rounded-3xl border-2 border-slate-100 bg-white shadow-2xl text-xl focus:outline-none focus:border-blue-500 transition-all" />
               <button onClick={handleGenerate} disabled={status === GenerationStatus.GENERATING} className="absolute right-4 top-4 bottom-4 px-6 rounded-2xl bg-blue-600 text-white font-bold hover:bg-blue-700 disabled:opacity-50 transition-all">
-                {status === GenerationStatus.GENERATING ? '处理中...' : '开始生成'}
+                {status === GenerationStatus.GENERATING ? t.generating : t.startGenerate}
               </button>
             </div>
 
             <div className="flex flex-col items-center gap-6">
               <div className="flex flex-wrap justify-center gap-3">
-                {['技术方案', '年度总结', '市场分析', '产品发布'].map(tag => (
+                {t.tags.map((tag: string) => (
                   <button key={tag} onClick={() => setProjectTopic(tag)} className="px-4 py-2 rounded-full bg-slate-50 border border-slate-100 text-xs font-bold text-slate-500 hover:bg-white hover:border-blue-200 transition-all">
                     {tag}
                   </button>
                 ))}
               </div>
-              
               <div className="h-px w-24 bg-slate-100"></div>
-
-              <button 
-                onClick={() => fileInputRef.current?.click()}
-                disabled={isParsingTemplate}
-                className="group flex items-center gap-4 px-8 py-4 rounded-2xl bg-indigo-50 border-2 border-dashed border-indigo-200 hover:border-indigo-500 hover:bg-white transition-all cursor-pointer"
-              >
+              <button onClick={() => fileInputRef.current?.click()} className="group flex items-center gap-4 px-8 py-4 rounded-2xl bg-indigo-50 border-2 border-dashed border-indigo-200 hover:border-indigo-500 hover:bg-white transition-all">
                 <div className="w-12 h-12 bg-indigo-600 rounded-xl flex items-center justify-center text-white group-hover:scale-110 transition-transform">
-                  {isParsingTemplate ? (
-                    <svg className="animate-spin h-6 w-6" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                  ) : (
-                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" /></svg>
-                  )}
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" /></svg>
                 </div>
                 <div className="text-left">
-                  <div className="font-black text-indigo-900 leading-tight">上传 PPTX 模板</div>
-                  <div className="text-sm text-indigo-400 font-medium">AI 将读取内容并提供深度重写与扩写方案</div>
+                  <div className="font-black text-indigo-900 leading-tight">{t.uploadTemplate}</div>
+                  <div className="text-sm text-indigo-400 font-medium">{t.uploadHint}</div>
                 </div>
               </button>
             </div>
@@ -372,7 +379,7 @@ const App: React.FC = () => {
               const isPrev = index < currentIndex;
               return (
                 <div key={slide.id} className={`absolute inset-0 transition-all duration-700 ease-in-out transform flex items-center justify-center ${isActive ? 'opacity-100 scale-100 translate-z-0 z-20' : isPrev ? 'opacity-0 -translate-x-[50%] scale-90 -rotate-y-[20deg] z-10 pointer-events-none' : 'opacity-0 translate-x-[50%] scale-90 rotate-y-[20deg] z-10 pointer-events-none'}`}>
-                  <SlideCard slide={slide} isActive={isActive} onRegenerate={handleRegenerateSlide} isRegenerating={regeneratingSlideId === slide.id} theme={currentTheme} onIconClick={handleIconClick} />
+                  <SlideCard slide={slide} isActive={isActive} onRegenerate={handleRegenerateSlide} isRegenerating={regeneratingSlideId === slide.id} theme={currentTheme} onIconClick={handleIconClick} lang={lang} />
                 </div>
               );
             })}
@@ -394,22 +401,22 @@ const App: React.FC = () => {
         </footer>
       )}
 
-      <ProjectPanel isOpen={isProjectOpen} onClose={() => setIsProjectOpen(false)} onLoadProject={handleLoadProject} onDeleteProject={handleDeleteProject} />
-      <ThemePanel isOpen={isThemeOpen} onClose={() => setIsThemeOpen(false)} currentTheme={currentTheme} onThemeChange={setCurrentTheme} />
-      <ChatPanel onSlidesGenerated={(newSlides) => { const updatedSlides = [...slides, ...newSlides]; setSlides(updatedSlides); performAutoSave(updatedSlides, currentTheme); setTimeout(() => setCurrentIndex(slides.length), 100); }} currentSlides={slides} isOpen={isChatOpen} onClose={() => setIsChatOpen(false)} />
-      <NotesPanel isOpen={isNotesOpen} onClose={() => setIsNotesOpen(false)} currentSlide={slides[currentIndex]} onUpdateNotes={handleUpdateNotes} />
-      <IconPicker isOpen={isIconPickerOpen} onClose={() => setIsIconPickerOpen(false)} targetIndex={targetIconIndex} onSelect={handleIconSelect} />
+      <ProjectPanel isOpen={isProjectOpen} onClose={() => setIsProjectOpen(false)} onLoadProject={handleLoadProject} onDeleteProject={handleDeleteProject} lang={lang} />
+      <ThemePanel isOpen={isThemeOpen} onClose={() => setIsThemeOpen(false)} currentTheme={currentTheme} onThemeChange={setCurrentTheme} lang={lang} />
+      <ChatPanel onSlidesGenerated={(newSlides) => { const updatedSlides = [...slides, ...newSlides]; setSlides(updatedSlides); performAutoSave(updatedSlides, currentTheme); setTimeout(() => setCurrentIndex(slides.length), 100); }} currentSlides={slides} isOpen={isChatOpen} onClose={() => setIsChatOpen(false)} lang={lang} />
+      <NotesPanel isOpen={isNotesOpen} onClose={() => setIsNotesOpen(false)} currentSlide={slides[currentIndex]} onUpdateNotes={handleUpdateNotes} lang={lang} />
+      <IconPicker isOpen={isIconPickerOpen} onClose={() => setIsIconPickerOpen(false)} targetIndex={targetIconIndex} onSelect={handleIconSelect} lang={lang} />
 
       {slides.length > 0 && (
         <div className="fixed left-6 bottom-6 z-50">
-          <button onClick={() => setIsNotesOpen(true)} className="p-4 bg-amber-500 text-white rounded-full shadow-2xl hover:bg-amber-600 transition-all hover:scale-110 active:scale-95">
+          <button onClick={() => setIsNotesOpen(true)} className="p-4 bg-amber-500 text-white rounded-full shadow-2xl hover:bg-amber-600 transition-all hover:scale-110 active:scale-95" title={t.notesTitle}>
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
           </button>
         </div>
       )}
 
       <div className="fixed right-6 bottom-6 z-50 flex flex-col gap-3">
-        <button onClick={() => setIsChatOpen(true)} className="p-4 bg-blue-600 text-white rounded-full shadow-2xl hover:bg-blue-700 transition-all hover:scale-110 active:scale-95">
+        <button onClick={() => setIsChatOpen(true)} className="p-4 bg-blue-600 text-white rounded-full shadow-2xl hover:bg-blue-700 transition-all hover:scale-110 active:scale-95" title={t.chatTitle}>
           <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" /></svg>
         </button>
       </div>

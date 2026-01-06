@@ -1,24 +1,28 @@
 
 import React from 'react';
 import { ICON_LIBRARY } from '../constants';
+import { UI_TRANSLATIONS, Language } from '../locales';
 
 interface IconPickerProps {
   onSelect: (iconKey: string) => void;
   isOpen: boolean;
   onClose: () => void;
   targetIndex: number;
+  // Add lang prop to fix TS error in App.tsx
+  lang?: Language;
 }
 
-const IconPicker: React.FC<IconPickerProps> = ({ onSelect, isOpen, onClose, targetIndex }) => {
+const IconPicker: React.FC<IconPickerProps> = ({ onSelect, isOpen, onClose, targetIndex, lang = 'zh' }) => {
   if (!isOpen) return null;
+  const t = UI_TRANSLATIONS[lang];
 
   return (
     <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-in fade-in duration-200">
       <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
         <div className="p-6 border-b border-slate-100 flex justify-between items-center">
           <div>
-            <h3 className="font-bold text-slate-900">选择图标</h3>
-            <p className="text-xs text-slate-400">正在为第 {targetIndex + 1} 项内容选择图标</p>
+            <h3 className="font-bold text-slate-900">{t.selectIcon}</h3>
+            <p className="text-xs text-slate-400">{t.selectingIcon.replace('{n}', (targetIndex + 1).toString())}</p>
           </div>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600 transition-colors">
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
