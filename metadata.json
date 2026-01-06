@@ -1,0 +1,5 @@
+{
+  "name": "AI Tech Feasibility PPT Generator",
+  "description": "A sophisticated presentation tool focused on analyzing the feasibility of AI technologies like MCP, Claude Code, and SDD. Features automated content generation and a modern slide interface.",
+  "requestFramePermissions": []
+}
