@@ -1,8 +1,7 @@
 
-import { Slide, ModelConfig } from "../types";
+import { GoogleGenAI, Type } from "@google/genai";
+import { Slide, ChatMessage } from "../types";
 import { Language } from "../locales";
-
-const ZHIPU_API_URL = "https://open.bigmodel.cn/api/paas/v4/chat/completions";
 
 const getLanguageName = (lang: Language) => {
   switch(lang) {
@@ -14,77 +13,54 @@ const getLanguageName = (lang: Language) => {
   }
 };
 
-/**
- * Core function to communicate with GLM API
- */
-const callGLM = async (prompt: string, modelConfig: ModelConfig, systemMsg: string = "") => {
-  const apiKey = process.env.API_KEY;
-  if (!apiKey) throw new Error("API Key is missing in environment variables.");
-
-  const messages = [];
-  if (systemMsg) {
-    messages.push({ role: "system", content: systemMsg });
-  }
-  messages.push({ role: "user", content: prompt });
-
-  const response = await fetch(ZHIPU_API_URL, {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${apiKey}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      model: modelConfig.model,
-      messages: messages,
-      temperature: modelConfig.temperature ?? 0.7,
-      top_p: modelConfig.topP ?? 0.7,
-      response_format: { type: "json_object" }
-    })
-  });
-
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
-    throw new Error(errorData?.error?.message || `GLM API Error: ${response.status}`);
-  }
-
-  const result = await response.json();
-  const content = result.choices[0].message.content;
-  
-  try {
-    return JSON.parse(content);
-  } catch (e) {
-    console.error("Failed to parse GLM JSON content:", content);
-    throw new Error("AI returned invalid JSON structure.");
-  }
+const SLIDE_SCHEMA = {
+  type: Type.OBJECT,
+  properties: {
+    title: { type: Type.STRING },
+    subtitle: { type: Type.STRING },
+    content: { type: Type.ARRAY, items: { type: Type.STRING } },
+    notes: { type: Type.STRING },
+    type: { type: Type.STRING, enum: ['title', 'content', 'feature', 'summary'] },
+    visualType: { type: Type.STRING, enum: ['chart', 'icon-grid', 'none', 'pie-chart', 'flow-chart', 'radar', 'radial-bar', 'area-chart'] }
+  },
+  required: ['title', 'content', 'type']
 };
 
-export const generateFullDeck = async (topic: string, lang: Language = 'zh', modelConfig: ModelConfig): Promise<Slide[]> => {
+export const generateFullDeck = async (topic: string, lang: Language = 'zh'): Promise<Slide[]> => {
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const langName = getLanguageName(lang);
   
-  const systemMsg = `You are a world-class presentation designer. 
-  You must output a JSON object containing a "slides" array.
-  Each slide must follow this schema:
-  {
-    "title": "Slide Title",
-    "subtitle": "Brief subtitle",
-    "content": ["Point 1", "Point 2", "Point 3"],
-    "notes": "Speaker guidance",
-    "type": "title" | "content" | "feature" | "summary",
-    "visualType": "chart" | "icon-grid" | "none" | "pie-chart" | "flow-chart" | "radar" | "radial-bar" | "area-chart"
-  }
-  Important: All text must be in ${langName}. Generate exactly 6 professional slides.`;
-
-  const prompt = `Create a deep, professional 6-slide presentation about: "${topic}". 
-  Ensure technical accuracy and sophisticated language.
-  Slides should cover: Title, Overview, Core Tech Analysis, Market Dynamics, Future Projections, and Summary.`;
+  const prompt = `
+    Create a complete 6-slide professional presentation about: "${topic}".
+    
+    Slide Structure & Visuals:
+    1. Title Slide (type: 'title')
+    2. Agenda/Overview (type: 'content', visualType: 'icon-grid')
+    3. Technical Capability Analysis (type: 'content', visualType: 'radar') - Use 5-6 dimensions like Performance, Security, Cost, Scalability, Ease of Use.
+    4. Market Adoption/落地进度 (type: 'content', visualType: 'radial-bar')
+    5. Trend Analysis (type: 'content', visualType: 'area-chart')
+    6. Summary & Conclusion (type: 'summary', visualType: 'chart')
+    
+    CRITICAL: Use ONLY ${langName} for all text.
+  `;
 
   try {
-    const data = await callGLM(prompt, modelConfig, systemMsg);
-    const slides = data.slides || [];
-    
-    return slides.map((s: any, index: number) => ({
+    const response = await ai.models.generateContent({
+      model: 'gemini-3-flash-preview',
+      contents: [{ role: 'user', parts: [{ text: prompt }] }],
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.ARRAY,
+          items: SLIDE_SCHEMA
+        }
+      }
+    });
+
+    const data = JSON.parse(response.text || '[]');
+    return data.map((s: any, index: number) => ({
       ...s,
-      id: `glm-${Date.now()}-${index}`,
+      id: `init-${Date.now()}-${index}`,
       backgroundGradient: s.type === 'title' || s.type === 'summary' ? 'from-slate-100 to-slate-200' : 'from-white to-slate-50'
     }));
   } catch (error) {
@@ -93,62 +69,135 @@ export const generateFullDeck = async (topic: string, lang: Language = 'zh', mod
   }
 };
 
-export const generateMoreSlides = async (currentTopic: string, lang: Language = 'zh', modelConfig: ModelConfig): Promise<Slide[]> => {
+export const processTemplateContent = async (rawText: string, lang: Language = 'zh'): Promise<Slide[]> => {
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const langName = getLanguageName(lang);
-  const systemMsg = `You are a professional presentation assistant. Return a JSON object with a "slides" array of 2-3 new slides. Language: ${langName}.`;
-  const prompt = `Based on the context of "${currentTopic}", generate 2-3 additional deep-dive slides using advanced visuals like 'radar' or 'area-chart'.`;
+  
+  const prompt = `
+    Analyze the following text and generate a refined PPT deck (6-8 slides).
+    Text: ${rawText}
+    Assign diverse visual types: 'radar' for capabilities, 'radial-bar' for scores, 'area-chart' for growth.
+    Use ONLY ${langName}.
+  `;
 
   try {
-    const data = await callGLM(prompt, modelConfig, systemMsg);
-    const slides = data.slides || [];
-    return slides.map((s: any, index: number) => ({
+    const response = await ai.models.generateContent({
+      model: 'gemini-3-pro-preview',
+      contents: [{ role: 'user', parts: [{ text: prompt }] }],
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.ARRAY,
+          items: SLIDE_SCHEMA
+        }
+      }
+    });
+
+    const data = JSON.parse(response.text || '[]');
+    return data.map((s: any, index: number) => ({
       ...s,
-      id: `gen-glm-${Date.now()}-${index}`,
-      backgroundGradient: 'from-white to-slate-50'
+      id: `tmpl-${Date.now()}-${index}`,
+      backgroundGradient: s.type === 'title' || s.type === 'summary' ? 'from-slate-100 to-slate-200' : 'from-white to-slate-50'
     }));
   } catch (error) {
-    console.error("GLM More Slides Error:", error);
+    console.error("Template Processing Error:", error);
     throw error;
   }
 };
 
-export const regenerateSingleSlide = async (slide: Slide, lang: Language = 'zh', modelConfig: ModelConfig): Promise<Slide> => {
+export const generateMoreSlides = async (currentTopic: string, lang: Language = 'zh'): Promise<Slide[]> => {
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const langName = getLanguageName(lang);
-  const systemMsg = `You are a professional presentation editor. Return a single slide JSON object. Language: ${langName}.`;
-  const prompt = `Regenerate this slide with more depth and better phrasing: "${slide.title}". Keep the same visualType if appropriate or upgrade it to 'radar' or 'area-chart'.`;
+  
+  const prompt = `
+    Generate 2-3 additional slides for: "${currentTopic}". Use advanced visuals like 'radar' or 'area-chart'.
+    Use ONLY ${langName}.
+  `;
 
   try {
-    const data = await callGLM(prompt, modelConfig, systemMsg);
-    // Handle both wrapped and unwrapped response
-    const result = data.slides ? data.slides[0] : data;
-    return { ...slide, ...result, id: slide.id };
+    const response = await ai.models.generateContent({
+      model: 'gemini-3-flash-preview',
+      contents: [{ role: 'user', parts: [{ text: prompt }] }],
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.ARRAY,
+          items: SLIDE_SCHEMA
+        }
+      }
+    });
+
+    const newSlidesData = JSON.parse(response.text || '[]');
+    return newSlidesData.map((s: any, index: number) => ({
+      ...s,
+      id: `gen-${Date.now()}-${index}`,
+      backgroundGradient: 'from-white to-slate-50'
+    }));
+  } catch (error) {
+    console.error("Gemini API Error:", error);
+    throw error;
+  }
+};
+
+export const regenerateSingleSlide = async (slide: Slide, lang: Language = 'zh'): Promise<Slide> => {
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const langName = getLanguageName(lang);
+  const prompt = `Regenerate the slide "${slide.title}". Use a cool visualType like 'radar', 'radial-bar', or 'area-chart'. Use ONLY ${langName}.`;
+
+  try {
+    const response = await ai.models.generateContent({
+      model: 'gemini-3-flash-preview',
+      contents: [{ role: 'user', parts: [{ text: prompt }] }],
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: SLIDE_SCHEMA
+      }
+    });
+
+    const result = JSON.parse(response.text || '{}');
+    return { ...slide, ...result };
   } catch (error) {
     console.error("Regenerate Slide Error:", error);
     throw error;
   }
 };
 
-export const generateSlidesFromChat = async (prompt: string, currentSlides: Slide[], lang: Language = 'zh'): Promise<{ reply: string; slides: Slide[] }> => {
+export const generateSlidesFromChat = async (prompt: string, currentSlides: Slide[], lang: Language = 'zh'): Promise<{ slides: Slide[], reply: string }> => {
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const langName = getLanguageName(lang);
-  const slidesContext = currentSlides.map(s => s.title).join(', ');
-  
-  const systemMsg = `You are a professional AI presentation consultant. 
-  Current context: ${slidesContext}.
-  You must return a JSON object: { "reply": "Your conversational response", "slides": [Optional new slide objects] }.
-  Language: ${langName}.`;
+  const systemInstruction = `You are a professional presentation expert. Suggest cool visuals: radar charts, radial bars, etc. Respond in ${langName}.`;
 
   try {
-    const chatConfig: ModelConfig = { model: 'glm-4.5-flash', temperature: 0.7, topP: 0.7 };
-    const data = await callGLM(prompt, chatConfig, systemMsg);
-    
-    const slides = (data.slides || []).map((s: any, index: number) => ({
+    const response = await ai.models.generateContent({
+      model: 'gemini-3-flash-preview',
+      contents: [{ role: 'user', parts: [{ text: prompt }] }],
+      config: {
+        systemInstruction,
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            newSlides: {
+              type: Type.ARRAY,
+              items: SLIDE_SCHEMA
+            },
+            reply: { type: Type.STRING }
+          },
+          required: ['newSlides', 'reply']
+        }
+      }
+    });
+
+    const result = JSON.parse(response.text || '{}');
+    const slidesWithIds = (result.newSlides || []).map((s: any, index: number) => ({
       ...s,
-      id: `chat-glm-${Date.now()}-${index}`,
+      id: `chat-gen-${Date.now()}-${index}`,
       backgroundGradient: 'from-white to-slate-50'
     }));
-    return { reply: data.reply || "我已根据您的要求处理了内容。", slides };
+
+    return { slides: slidesWithIds, reply: result.reply };
   } catch (error) {
-    console.error("Chat Error:", error);
-    return { reply: "抱歉，在处理您的请求时遇到了技术挑战。", slides: [] };
+    console.error("Chat Generation Error:", error);
+    throw error;
   }
 };
