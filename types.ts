@@ -7,7 +7,7 @@ export interface Slide {
   notes?: string;
   customIcons?: string[]; // Array of icon keys matching the content index
   type: 'title' | 'content' | 'feature' | 'summary';
-  visualType?: 'chart' | 'pie-chart' | 'icon-grid' | 'flow-chart' | 'none';
+  visualType?: 'chart' | 'pie-chart' | 'icon-grid' | 'flow-chart' | 'radar' | 'radial-bar' | 'area-chart' | 'none';
   backgroundGradient?: string;
 }
 

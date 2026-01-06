@@ -13,6 +13,19 @@ const getLanguageName = (lang: Language) => {
   }
 };
 
+const SLIDE_SCHEMA = {
+  type: Type.OBJECT,
+  properties: {
+    title: { type: Type.STRING },
+    subtitle: { type: Type.STRING },
+    content: { type: Type.ARRAY, items: { type: Type.STRING } },
+    notes: { type: Type.STRING },
+    type: { type: Type.STRING, enum: ['title', 'content', 'feature', 'summary'] },
+    visualType: { type: Type.STRING, enum: ['chart', 'icon-grid', 'none', 'pie-chart', 'flow-chart', 'radar', 'radial-bar', 'area-chart'] }
+  },
+  required: ['title', 'content', 'type']
+};
+
 export const generateFullDeck = async (topic: string, lang: Language = 'zh'): Promise<Slide[]> => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const langName = getLanguageName(lang);
@@ -20,17 +33,15 @@ export const generateFullDeck = async (topic: string, lang: Language = 'zh'): Pr
   const prompt = `
     Create a complete 6-slide professional presentation about: "${topic}".
     
-    Slide Structure:
+    Slide Structure & Visuals:
     1. Title Slide (type: 'title')
     2. Agenda/Overview (type: 'content', visualType: 'icon-grid')
-    3. Technical/Core Concept (type: 'content', visualType: 'flow-chart')
-    4. Data/Market Analysis (type: 'content', visualType: 'chart')
-    5. Strategic Outlook (type: 'content', visualType: 'pie-chart')
+    3. Technical Capability Analysis (type: 'content', visualType: 'radar') - Use 5-6 dimensions like Performance, Security, Cost, Scalability, Ease of Use.
+    4. Market Adoption/落地进度 (type: 'content', visualType: 'radial-bar')
+    5. Trend Analysis (type: 'content', visualType: 'area-chart')
     6. Summary & Conclusion (type: 'summary', visualType: 'chart')
     
-    Ensure the content is insightful and professional. 
     CRITICAL: Use ONLY ${langName} for all text.
-    Strictly follow the JSON schema provided.
   `;
 
   try {
@@ -41,18 +52,7 @@ export const generateFullDeck = async (topic: string, lang: Language = 'zh'): Pr
         responseMimeType: "application/json",
         responseSchema: {
           type: Type.ARRAY,
-          items: {
-            type: Type.OBJECT,
-            properties: {
-              title: { type: Type.STRING },
-              subtitle: { type: Type.STRING },
-              content: { type: Type.ARRAY, items: { type: Type.STRING } },
-              notes: { type: Type.STRING },
-              type: { type: Type.STRING, enum: ['title', 'content', 'feature', 'summary'] },
-              visualType: { type: Type.STRING, enum: ['chart', 'icon-grid', 'none', 'pie-chart', 'flow-chart'] }
-            },
-            required: ['title', 'content', 'type']
-          }
+          items: SLIDE_SCHEMA
         }
       }
     });
@@ -74,16 +74,10 @@ export const processTemplateContent = async (rawText: string, lang: Language = '
   const langName = getLanguageName(lang);
   
   const prompt = `
-    You are an AI presentation expert. I have extracted the following text from an existing PPT template:
-    ---
-    ${rawText}
-    ---
-    Please analyze this content and:
-    1. Summarize the core theme.
-    2. Generate a refined and professionally rewritten version of these slides (6-8 slides).
-    3. If the content is sparse, expand it with relevant professional insights.
-    4. Use ONLY ${langName} for all output text.
-    5. Ensure each slide has a logical 'visualType'.
+    Analyze the following text and generate a refined PPT deck (6-8 slides).
+    Text: ${rawText}
+    Assign diverse visual types: 'radar' for capabilities, 'radial-bar' for scores, 'area-chart' for growth.
+    Use ONLY ${langName}.
   `;
 
   try {
@@ -94,18 +88,7 @@ export const processTemplateContent = async (rawText: string, lang: Language = '
         responseMimeType: "application/json",
         responseSchema: {
           type: Type.ARRAY,
-          items: {
-            type: Type.OBJECT,
-            properties: {
-              title: { type: Type.STRING },
-              subtitle: { type: Type.STRING },
-              content: { type: Type.ARRAY, items: { type: Type.STRING } },
-              notes: { type: Type.STRING },
-              type: { type: Type.STRING, enum: ['title', 'content', 'feature', 'summary'] },
-              visualType: { type: Type.STRING, enum: ['chart', 'icon-grid', 'none', 'pie-chart', 'flow-chart'] }
-            },
-            required: ['title', 'content', 'type']
-          }
+          items: SLIDE_SCHEMA
         }
       }
     });
@@ -127,9 +110,8 @@ export const generateMoreSlides = async (currentTopic: string, lang: Language = 
   const langName = getLanguageName(lang);
   
   const prompt = `
-    Based on the following existing slides: "${currentTopic}", 
-    generate 2-3 additional professional presentation slides in JSON format that expand on the topic.
-    Use ONLY ${langName} for all text.
+    Generate 2-3 additional slides for: "${currentTopic}". Use advanced visuals like 'radar' or 'area-chart'.
+    Use ONLY ${langName}.
   `;
 
   try {
@@ -140,24 +122,12 @@ export const generateMoreSlides = async (currentTopic: string, lang: Language = 
         responseMimeType: "application/json",
         responseSchema: {
           type: Type.ARRAY,
-          items: {
-            type: Type.OBJECT,
-            properties: {
-              title: { type: Type.STRING },
-              subtitle: { type: Type.STRING },
-              content: { type: Type.ARRAY, items: { type: Type.STRING } },
-              notes: { type: Type.STRING },
-              type: { type: Type.STRING, enum: ['content', 'feature', 'summary'] },
-              visualType: { type: Type.STRING, enum: ['chart', 'icon-grid', 'none', 'pie-chart', 'flow-chart'] }
-            },
-            required: ['title', 'content', 'type']
-          }
+          items: SLIDE_SCHEMA
         }
       }
     });
 
-    const rawText = response.text;
-    const newSlidesData = JSON.parse(rawText || '[]');
+    const newSlidesData = JSON.parse(response.text || '[]');
     return newSlidesData.map((s: any, index: number) => ({
       ...s,
       id: `gen-${Date.now()}-${index}`,
@@ -172,7 +142,7 @@ export const generateMoreSlides = async (currentTopic: string, lang: Language = 
 export const regenerateSingleSlide = async (slide: Slide, lang: Language = 'zh'): Promise<Slide> => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const langName = getLanguageName(lang);
-  const prompt = `Regenerate the slide content with title "${slide.title}". Provide deeper insights. Use ONLY ${langName}. Return JSON.`;
+  const prompt = `Regenerate the slide "${slide.title}". Use a cool visualType like 'radar', 'radial-bar', or 'area-chart'. Use ONLY ${langName}.`;
 
   try {
     const response = await ai.models.generateContent({
@@ -180,17 +150,7 @@ export const regenerateSingleSlide = async (slide: Slide, lang: Language = 'zh')
       contents: [{ role: 'user', parts: [{ text: prompt }] }],
       config: {
         responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            title: { type: Type.STRING },
-            subtitle: { type: Type.STRING },
-            content: { type: Type.ARRAY, items: { type: Type.STRING } },
-            type: { type: Type.STRING, enum: ['content', 'feature', 'summary'] },
-            visualType: { type: Type.STRING, enum: ['chart', 'pie-chart', 'icon-grid', 'flow-chart', 'none'] }
-          },
-          required: ['title', 'content', 'type']
-        }
+        responseSchema: SLIDE_SCHEMA
       }
     });
 
@@ -205,7 +165,7 @@ export const regenerateSingleSlide = async (slide: Slide, lang: Language = 'zh')
 export const generateSlidesFromChat = async (prompt: string, currentSlides: Slide[], lang: Language = 'zh'): Promise<{ slides: Slide[], reply: string }> => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const langName = getLanguageName(lang);
-  const systemInstruction = `You are a professional presentation expert. Current slides: ${currentSlides.map(s => s.title).join(', ')}. Respond and generate in ONLY ${langName}.`;
+  const systemInstruction = `You are a professional presentation expert. Suggest cool visuals: radar charts, radial bars, etc. Respond in ${langName}.`;
 
   try {
     const response = await ai.models.generateContent({
@@ -219,17 +179,7 @@ export const generateSlidesFromChat = async (prompt: string, currentSlides: Slid
           properties: {
             newSlides: {
               type: Type.ARRAY,
-              items: {
-                type: Type.OBJECT,
-                properties: {
-                  title: { type: Type.STRING },
-                  subtitle: { type: Type.STRING },
-                  content: { type: Type.ARRAY, items: { type: Type.STRING } },
-                  type: { type: Type.STRING, enum: ['content', 'feature', 'summary'] },
-                  visualType: { type: Type.STRING, enum: ['chart', 'pie-chart', 'icon-grid', 'flow-chart', 'none'] }
-                },
-                required: ['title', 'content', 'type']
-              }
+              items: SLIDE_SCHEMA
             },
             reply: { type: Type.STRING }
           },
