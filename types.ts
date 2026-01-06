@@ -1,11 +1,17 @@
 
+export interface ModelConfig {
+  model: 'glm-4.5-flash' | 'glm-4-plus' | 'glm-4-air';
+  temperature: number;
+  topP: number;
+}
+
 export interface Slide {
   id: string;
   title: string;
   subtitle?: string;
   content: string[];
   notes?: string;
-  customIcons?: string[]; // Array of icon keys matching the content index
+  customIcons?: string[];
   type: 'title' | 'content' | 'feature' | 'summary';
   visualType?: 'chart' | 'pie-chart' | 'icon-grid' | 'flow-chart' | 'radar' | 'radial-bar' | 'area-chart' | 'none';
   backgroundGradient?: string;
@@ -26,11 +32,6 @@ export interface ThemeConfig {
 export interface ChatMessage {
   role: 'user' | 'assistant';
   text: string;
-}
-
-export interface Presentation {
-  title: string;
-  slides: Slide[];
 }
 
 export enum GenerationStatus {
